@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>歌词海报生成器 | 手写体 · 渐变色背景</title>
+    <!-- html2canvas 库：将 DOM 元素转换为图片 -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 主容器：两栏布局，大屏并排，小屏堆叠 */
+        .app-container {
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+        }
+
+        /* 左侧控制面板 */
+        .control-panel {
+            flex: 1;
+            min-width: 280px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 32px;
+            padding: 24px;
+            box-shadow: 0 25px 45px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.2);
+            height: fit-content;
+        }
+
+        .control-panel h2 {
+            color: white;
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .sub {
+            color: #aaa;
+            margin-bottom: 24px;
+            font-size: 0.85rem;
+            border-left: 3px solid #f472b6;
+            padding-left: 12px;
+        }
+
+        /* 输入区域 */
+        .input-group {
+            margin-bottom: 24px;
+        }
+
+        .input-group label {
+            display: block;
+            color: #f0f0f0;
+            font-weight: 500;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 14px;
+            border-radius: 20px;
+            border: none;
+            background: #0f0f1a;
+            color: white;
+            font-size: 1rem;
+            font-family: monospace;
+            resize: vertical;
+            outline: none;
+            transition: 0.2s;
+        }
+
+        textarea:focus {
+            box-shadow: 0 0 0 2px #f472b6;
+        }
+
+        /* 颜色控制区 */
+        .gradient-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .color-box {
+            flex: 1;
+        }
+
+        .color-box span {
+            font-size: 0.8rem;
+            color: #ccc;
+        }
+
+        input[type="color"] {
+            width: 100%;
+            height: 48px;
+            border-radius: 16px;
+            border: none;
+            background: #0f0f1a;
+            cursor: pointer;
+            margin-top: 6px;
+        }
+
+        /* 方向按钮组 */
+        .dir-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .dir-btn {
+            background: #2d2d44;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 40px;
+            color: white;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .dir-btn.active {
+            background: #f472b6;
+            color: #1a1a2e;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(244,114,182,0.4);
+        }
+
+        /* 按钮区 */
+        .actions {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin: 30px 0 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px 0;
+            border-radius: 60px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: 0.2s;
+            background: #2d2d44;
+            color: white;
+        }
+
+        .btn-primary {
+            background: #f472b6;
+            color: #1a1a2e;
+            box-shadow: 0 8px 20px rgba(244,114,182,0.3);
+        }
+
+        .btn-primary:hover {
+            transform: scale(0.97);
+            background: #ff85c1;
+        }
+
+        .btn:hover {
+            transform: scale(0.98);
+        }
+
+        /* 右侧预览区 */
+        .preview-area {
+            flex: 1;
+            min-width: 360px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 40px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .preview-title {
+            color: white;
+            margin-bottom: 20px;
+            font-weight: 500;
+            align-self: flex-start;
+        }
+
+        /* 歌词卡片 — 这就是我们要生成图片的核心DOM */
+        .lyric-card {
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 9 / 16;  /* 竖屏9:16 */
+            border-radius: 48px;
+            padding: 40px 28px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 25px 40px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+            /* 背景渐变会在js里动态设置，但这里设一个保底 */
+            background: linear-gradient(135deg, #fbc2eb, #a6c1ee);
+        }
+
+        .lyrics-text {
+            font-family: 'Dancing Script', '华文行书', 'Bradley Hand', 'cursive', 'KaiTi';
+            font-weight: 600;
+            font-size: 28px;
+            line-height: 1.45;
+            color: #fff;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+            white-space: pre-line;
+            word-break: break-word;
+            text-align: center;
+        }
+
+        /* 如果手写体加载太慢，Google Fonts 优雅降级 */
+        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap');
+
+        .footer-note {
+            margin-top: 24px;
+            color: #aaa;
+            font-size: 0.7rem;
+            text-align: center;
+        }
+
+        /* 下载提示 */
+        .toast-msg {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #f472b6;
+            color: #1a1a2e;
+            padding: 12px 24px;
+            border-radius: 60px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        @media (max-width: 780px) {
+            .lyric-card {
+                padding: 30px 20px;
+            }
+            .lyrics-text {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <!-- 左侧控制区 -->
+    <div class="control-panel">
+        <h2>🎵 歌词海报机</h2>
+        <div class="sub">手写体 · 渐变氛围 · 一键存图</div>
+
+        <div class="input-group">
+            <label>📝 粘贴歌词 (支持换行)</label>
+            <textarea id="lyricsInput" rows="5" placeholder="例如：&#10;雨下整夜 我的爱溢出就像雨水&#10;院子落叶 跟我的思念厚厚一叠&#10;几句是非 也无法将我的热情冷却&#10;你出现在我诗的每一页"></textarea>
+        </div>
+
+        <div class="gradient-row">
+            <div class="color-box">
+                <span>🎨 起始颜色</span>
+                <input type="color" id="colorStart" value="#fbc2eb">
+            </div>
+            <div class="color-box">
+                <span>🌈 结束颜色</span>
+                <input type="color" id="colorEnd" value="#a6c1ee">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>📐 渐变方向</label>
+            <div class="dir-buttons" id="directionGroup">
+                <button data-dir="to right" class="dir-btn">→ 从左到右</button>
+                <button data-dir="to bottom" class="dir-btn active">↓ 从上到下</button>
+                <button data-dir="135deg" class="dir-btn">↘︎ 对角</button>
+                <button data-dir="to top right" class="dir-btn">↗︎ 右上</button>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn" id="previewBtn">✨ 刷新预览</button>
+            <button class="btn btn-primary" id="downloadBtn">📲 保存图片 (PNG)</button>
+        </div>
+        <div class="footer-note">
+            💡 图片为9:16竖版，适合抖音/小红书/B站封面
+        </div>
+    </div>
+
+    <!-- 右侧预览区 -->
+    <div class="preview-area">
+        <div class="preview-title">📱 歌词卡片效果</div>
+        <div id="lyricCardContainer" style="width:100%; display:flex; justify-content:center;">
+            <!-- 动态卡片 -->
+            <div class="lyric-card" id="lyricCard">
+                <div class="lyrics-text" id="lyricsDisplay">
+                    雨下整夜 我的爱溢出就像雨水<br>
+                    院子落叶 跟我的思念厚厚一叠<br>
+                    几句是非 也无法将我的热情冷却<br>
+                    你出现在我诗的每一页
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="toastMsg" class="toast-msg">✅ 图片已保存</div>
+
+<script>
+    (function() {
+        // DOM 元素
+        const lyricsInput = document.getElementById('lyricsInput');
+        const lyricsDisplay = document.getElementById('lyricsDisplay');
+        const lyricCard = document.getElementById('lyricCard');
+        const colorStart = document.getElementById('colorStart');
+        const colorEnd = document.getElementById('colorEnd');
+        const previewBtn = document.getElementById('previewBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const toastMsg = document.getElementById('toastMsg');
+
+        let currentGradientDir = 'to bottom';   // 默认从上到下
+
+        // 方向按钮交互
+        const dirBtns = document.querySelectorAll('.dir-btn');
+        dirBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                dirBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentGradientDir = this.getAttribute('data-dir');
+                updateCardGradient();
+            });
+        });
+
+        // 更新卡片的渐变背景
+        function updateCardGradient() {
+            const start = colorStart.value;
+            const end = colorEnd.value;
+            // 构造 linear-gradient 字符串
+            const gradientStyle = `linear-gradient(${currentGradientDir}, ${start}, ${end})`;
+            lyricCard.style.background = gradientStyle;
+        }
+
+        // 刷新歌词文本 + 渐变 (保证预览即时更新)
+        function refreshLyricsAndStyle() {
+            let rawLyrics = lyricsInput.value;
+            if (rawLyrics.trim() === "") {
+                rawLyrics = "✨ 在这里粘贴你的歌词 ✨\n每一句都会有温柔手写体";
+            }
+            // 将换行符转换成 <br> 标签，保留换行排版
+            const formatted = rawLyrics.split('\n').map(line => {
+                // 如果行内是空行也保留占位
+                return line === '' ? '<br>' : line;
+            }).join('<br>');
+            lyricsDisplay.innerHTML = formatted;
+            
+            // 同时刷新渐变 (保证颜色/方向同步)
+            updateCardGradient();
+        }
+
+        // 监听颜色变化，实时刷新
+        colorStart.addEventListener('input', () => {
+            updateCardGradient();
+        });
+        colorEnd.addEventListener('input', () => {
+            updateCardGradient();
+        });
+
+        // 预览按钮：将当前输入同步到卡片
+        previewBtn.addEventListener('click', () => {
+            refreshLyricsAndStyle();
+            showToast('✨ 预览已更新');
+        });
+
+        // 显示短暂提示
+        function showToast(msg) {
+            toastMsg.textContent = msg || '✅ 图片已保存';
+            toastMsg.style.opacity = '1';
+            setTimeout(() => {
+                toastMsg.style.opacity = '0';
+            }, 1800);
+        }
+
+        // 下载图片（核心：使用 html2canvas 把 lyricCard 转成图片）
+        async function downloadCardAsImage() {
+            // 确保样式是最新
+            refreshLyricsAndStyle();
+            
+            // 给一个小的延迟，保证字体和渲染稳定
+            showToast('🎨 生成中，请稍等...');
+            
+            try {
+                // 临时提高截图质量，去除滚动影响
+                const canvas = await html2canvas(lyricCard, {
+                    scale: 2.5,               // 高清输出
+                    backgroundColor: null,     // 保留透明/渐变背景
+                    useCORS: false,
+                    logging: false,
+                    allowTaint: false
+                });
+                
+                // 创建下载链接
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+                link.download = `lyrics_poster_${timestamp}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                
+                showToast('✅ 图片已保存到相册/下载文件夹');
+            } catch (error) {
+                console.error('截图生成失败', error);
+                showToast('❌ 生成失败，可刷新页面重试');
+            }
+        }
+
+        downloadBtn.addEventListener('click', downloadCardAsImage);
+        
+        // 初始化一些示例文本与渐变
+        // 设置一个优美的手写示例
+        const defaultText = `雨下整夜 我的爱溢出就像雨水
+院子落叶 跟我的思念厚厚一叠
+几句是非 也无法将我的热情冷却
+你出现在我诗的每一页`;
+        lyricsInput.value = defaultText;
+        refreshLyricsAndStyle();
+    })();
+</script>
+</body>
+</html>
